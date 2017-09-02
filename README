@@ -1,0 +1,43 @@
+Use this script in case you want to access your system across a firewall. This start an ec2 instance, creates a reverse tunnel to it, which's make the sshd of the ec2 instance listen on some port which'll be forwarded to the port on which your ssh daemon listens on your system. On receiving a SIGTERM or SIGINT (ctrl+c), it'll shutdown the instance which it started.
+
+This script works by executing the ssh command and will write to the created ssh session with the EC2 server to determine if things are ok or not. In case ssh dies, it'll be restarted and it'll attempt to create the tunnel again.
+
+As the 1st argument, this takes in a JSON configuration file. This JSON contains simple key-value pairs as -- 
+access -- An array of the of the access ID and key to your AWS account.
+region -- The region in which the EC2 instance resides.
+instance_id -- Contains the ID of the instance to start.
+sshkey -- Path of the unencrypted private key to the sshd server.
+sshuser -- The ssh user to use to create the reverse tunnel.
+exposePorts -- What port will the server be listening to for the created reverse tunnel.
+sshPort -- SSH port of the server on the EC2 instance.
+privateIP -- The private IP of the server to which the reverse tunneled connection will listen to. This's probably the IP of the interface via which you access the Internet.
+localIP -- The IP to which the connection will map on the client. This's probably localhost, or the IP to which the sshd on your system listens to.
+localPort -- The port to which the connection will map on the client (your system).
+writeIntervel -- The interval between which this script will write to the created SSH session to the ec2 instance to test the connection.
+ServerAliveCountMax -- Sets the number of keepalive packets which may be sent by ssh without receiving any mes‐sages back from the server. If this threshold is reached, the ssh connection will be retried.
+ServerAliveInterval -- Intervals between keepalive packets for ssh.
+ConnectTimeout -- The timeout (in seconds) used when connecting to the SSH server (the started instance)
+
+e.g config -- 
+{
+        "access": ["xxxx", "xxxx"],
+        "region": "xx-xxxxx-x",
+        "instance_id": "xxxxxx",
+        "sshkey": "/a/path/to/a.key",
+        "sshuser": "rtunnel",
+        "exposePorts": 2222,
+        "sshPort": 22,
+        "privateIP": "172.31.0.3",
+        "localIP": "127.0.0.1",
+        "localPort": 22,
+        "writeIntervel": 5,
+        "ServerAliveCountMax": 3,
+        "ServerAliveInterval": 20,
+        "ConnectTimeout": 30
+}
+
+All of these are mandatory. Prepair for exceptions in case any one of them is not found.
+
+For the sshd configuration, set 'GatewayPorts clientspecified' for the reverse tunnel to work.
+
+This determines the public IP of the instance automatically.

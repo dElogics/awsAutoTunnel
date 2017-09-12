@@ -55,18 +55,24 @@ client = Aws::EC2::Client.new({:region => config[:region] , :credentials => cred
 resource = Aws::EC2::Resource.new({:client => client})
 
 # start instance
-rsshInstance = resource.instances(instanceArgs).first
-# Algo 20. Not sure what to do when it does not start properly.
-rsshInstance.start
-instancePIP = nil
-# Get public IP.
-puts 'attempting to determine public IP'
-while instancePIP == nil
+begin
+	rsshInstance = resource.instances(instanceArgs).first
+	# Algo 20. Not sure what to do when it does not start properly.
+	rsshInstance.start
+	instancePIP = nil
+	# Get public IP.
+	puts 'attempting to determine public IP'
+	while instancePIP == nil
+		sleep 1
+		instancePIP = rsshInstance.public_ip_address
+		rsshInstance.reload
+	end
+rescue Seahorse::Client::NetworkingError
+	puts 'Network exception by AWS. Retrying'
 	sleep 1
-	instancePIP = rsshInstance.public_ip_address
-	rsshInstance.reload
+	retry
 end
-sshcmd = ['ssh', '-T', '-o', "ServerAliveCountMax=#{config[:ServerAliveCountMax]}", '-o', "ServerAliveInterval=#{config[:ServerAliveInterval]}", '-o', "ConnectTimeout=#{config[:ConnectTimeout]}", '-i', config[:sshkey], '-p', config[:sshPort].to_s, '-R', "#{config[:privateIP]}:#{config[:exposePorts]}:#{config[:localIP]}:#{config[:localPort]}", "#{config[:sshuser]}@#{instancePIP}"]
+sshcmd = ['ssh', '-T', '-o', "ServerAliveCountMax=#{config[:ServerAliveCountMax]}", '-o', "ServerAliveInterval=#{config[:ServerAliveInterval]}", '-o', "ConnectTimeout=#{config[:ConnectTimeout]}",'-o', 'ExitOnForwardFailure=yes', '-i', config[:sshkey], '-p', config[:sshPort].to_s, '-R', "#{config[:privateIP]}:#{config[:exposePorts]}:#{config[:localIP]}:#{config[:localPort]}", "#{config[:sshuser]}@#{instancePIP}"]
 puts 'executing ssh....'
 begin
 	sshcmdIP = IO.popen(sshcmd, 'w')
@@ -84,12 +90,18 @@ rescue SignalException => exceptionError
 	if (exceptionError.signo == 2) || (exceptionError.signo == 15)
 # 		algo 60.
 		puts 'Shutting down instance.'
-		rsshInstance.stop
-		rsshInstance.wait_until({:max_attempts => 9999, :delay => 5}) {
-			|instance|
-			puts 'waiting for shutdown...'
-			instance.state.code >= 32
-		}
+		begin
+			rsshInstance.stop
+			rsshInstance.wait_until({:max_attempts => 9999, :delay => 5}) {
+				|instance|
+				puts 'waiting for shutdown...'
+				instance.state.code >= 32
+			}
+		rescue Seahorse::Client::NetworkingError
+			sleep 1
+			puts 'Network exception by AWS. Retrying'
+			retry
+		end
 	else
 		exit
 	end
